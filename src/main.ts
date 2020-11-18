@@ -1,17 +1,34 @@
-import { App, Construct, Stack, StackProps } from '@aws-cdk/core';
+import * as path from 'path';
+import * as api from '@aws-cdk/aws-apigatewayv2';
+import * as integration from '@aws-cdk/aws-apigatewayv2-integrations';
 import * as ec2 from '@aws-cdk/aws-ec2';
+import { DockerImageAsset } from '@aws-cdk/aws-ecr-assets';
 import * as ecs from '@aws-cdk/aws-ecs';
 import * as lambda from '@aws-cdk/aws-lambda';
-import * as path from 'path';
+import * as servicediscovery from '@aws-cdk/aws-servicediscovery';
+import { App, CfnOutput, Construct, Stack, StackProps } from '@aws-cdk/core';
+
+interface LambdaEcsStackProps extends StackProps {
+  NAMESPACE_NAME: string;
+  NODEJS_PORT: number;
+}
 
 export class LambdaECSStack extends Stack {
-  constructor(scope: Construct, id: string, props: StackProps = {}) {
+  constructor(scope: Construct, id: string, props: LambdaEcsStackProps) {
     super(scope, id, props);
 
+    // Create a VPC
     const vpc = new ec2.Vpc(this, 'Vpc', {
       natGateways: 1,
     });
 
+    // Cloud Map Namespace
+    const namespace = new servicediscovery.PrivateDnsNamespace(this, 'PrivateDnsNamespace', {
+      name: props.NAMESPACE_NAME,
+      vpc,
+    });
+
+    // Create a ECS Cluster
     const cluster = new ecs.Cluster(this, 'Cluster', {
       vpc,
     });
@@ -22,26 +39,73 @@ export class LambdaECSStack extends Stack {
       desiredCapacity: 3,
     });
 
-    const taskDefinition = new ecs.Ec2TaskDefinition(this, 'TaskDef');
+    // Create a Task Definition
+    const taskDefinition = new ecs.Ec2TaskDefinition(this, 'TaskDef', {
+      networkMode: ecs.NetworkMode.AWS_VPC,
+    });
 
-    taskDefinition.addContainer('DefaultContainer', {
-      image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
+    const container = taskDefinition.addContainer('DefaultContainer', {
+      image: ecs.ContainerImage.fromDockerImageAsset(
+        new DockerImageAsset(this, 'DockerImageAsset', {
+          directory: path.join(__dirname, 'healthcheck'),
+        })),
       memoryLimitMiB: 512,
     });
-
-    // Instantiate an Amazon ECS Service
-    const ecsService = new ecs.Ec2Service(this, 'Service', {
-      cluster,
-      taskDefinition,
+    container.addPortMappings({
+      containerPort: props.NODEJS_PORT,
+      hostPort: props.NODEJS_PORT,
+      protocol: ecs.Protocol.TCP,
     });
 
-    const fn = new lambda.Function(this, 'Lambda', {
+    const lambdaSg = new ec2.SecurityGroup(this, 'LambdaSecurityGroup', {
+      vpc,
+    });
+
+    const taskSg = new ec2.SecurityGroup(this, 'TaskSecurityGroup', {
+      vpc,
+    });
+    taskSg.addIngressRule(lambdaSg, ec2.Port.tcp(props.NODEJS_PORT));
+
+    // Instantiate an Amazon ECS Service
+    const ec2Service = new ecs.Ec2Service(this, 'Service', {
+      cluster,
+      taskDefinition,
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE },
+      securityGroups: [taskSg],
+      cloudMapOptions: {
+        cloudMapNamespace: namespace,
+        dnsRecordType: servicediscovery.DnsRecordType.A,
+      },
+    });
+
+    const lambdaFn = new lambda.Function(this, 'Lambda', {
       runtime: lambda.Runtime.NODEJS_12_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, 'lambda')),
+      vpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE },
+      securityGroup: lambdaSg,
+      environment: {
+        ...(ec2Service.cloudMapService && { HEALTHCHECK_HOSTNAME: ec2Service.cloudMapService.serviceName + '.' + props.NAMESPACE_NAME }),
+        HEALTHCHECK_PORT: String(props.NODEJS_PORT),
+      },
     });
 
+    const lambdaFnIntegration = new integration.LambdaProxyIntegration({
+      handler: lambdaFn,
+    });
 
+    const httpApi = new api.HttpApi(this, 'HttpApi');
+
+    httpApi.addRoutes({
+      path: '/',
+      methods: [api.HttpMethod.GET],
+      integration: lambdaFnIntegration,
+    });
+
+    new CfnOutput(this, 'ApiEndpoint', {
+      value: httpApi.apiEndpoint,
+    });
   }
 }
 
@@ -53,7 +117,11 @@ const devEnv = {
 
 const app = new App();
 
-new LambdaECSStack(app, 'lambda-ecs-stack-dev', { env: devEnv });
+new LambdaECSStack(app, 'lambda-ecs-stack-dev', {
+  env: devEnv,
+  NAMESPACE_NAME: app.node.tryGetContext('namespace') || 'lambdaecsstack.local',
+  NODEJS_PORT: 3000,
+});
 // new MyStack(app, 'my-stack-prod', { env: prodEnv });
 
 app.synth();

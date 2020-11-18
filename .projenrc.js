@@ -1,12 +1,17 @@
 const { AwsCdkTypeScriptApp } = require('projen');
 
 const project = new AwsCdkTypeScriptApp({
-  cdkVersion: "1.73.0",
+  cdkVersion: "1.74.0",
   name: "lambda-ecs-cdk",
   cdkDependencies: [
+    '@aws-cdk/aws-ecr',
+    '@aws-cdk/aws-ecr-assets',
     '@aws-cdk/aws-ecs',
     '@aws-cdk/aws-lambda',
     '@aws-cdk/aws-ec2',
+    '@aws-cdk/aws-apigatewayv2',
+    '@aws-cdk/aws-apigatewayv2-integrations',
+    '@aws-cdk/aws-servicediscovery',
   ],
 
   /* AwsCdkTypeScriptAppOptions */
