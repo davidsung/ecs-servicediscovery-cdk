@@ -36,7 +36,7 @@ export class LambdaECSStack extends Stack {
     // Add capacity to it
     cluster.addCapacity('DefaultAutoScalingGroupCapacity', {
       instanceType: new ec2.InstanceType('t3.large'),
-      desiredCapacity: 3,
+      desiredCapacity: 1,
     });
 
     // Create a Task Definition
