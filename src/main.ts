@@ -8,19 +8,17 @@ import * as lambda from '@aws-cdk/aws-lambda';
 import * as servicediscovery from '@aws-cdk/aws-servicediscovery';
 import { App, CfnOutput, Construct, Stack, StackProps } from '@aws-cdk/core';
 
-interface LambdaEcsStackProps extends StackProps {
+interface EcsServiceDiscoveryStackProps extends StackProps {
   NAMESPACE_NAME: string;
   NODEJS_PORT: number;
 }
 
-export class LambdaECSStack extends Stack {
-  constructor(scope: Construct, id: string, props: LambdaEcsStackProps) {
+export class ECSServiceDiscoveryStack extends Stack {
+  constructor(scope: Construct, id: string, props: EcsServiceDiscoveryStackProps) {
     super(scope, id, props);
 
     // Create a VPC
-    const vpc = new ec2.Vpc(this, 'Vpc', {
-      natGateways: 1,
-    });
+    const vpc = new ec2.Vpc(this, 'Vpc');
 
     // Cloud Map Namespace
     const namespace = new servicediscovery.PrivateDnsNamespace(this, 'PrivateDnsNamespace', {
@@ -29,9 +27,7 @@ export class LambdaECSStack extends Stack {
     });
 
     // Create a ECS Cluster
-    const cluster = new ecs.Cluster(this, 'Cluster', {
-      vpc,
-    });
+    const cluster = new ecs.Cluster(this, 'Cluster', { vpc });
 
     // Add capacity to it
     cluster.addCapacity('DefaultAutoScalingGroupCapacity', {
@@ -57,13 +53,9 @@ export class LambdaECSStack extends Stack {
       protocol: ecs.Protocol.TCP,
     });
 
-    const lambdaSg = new ec2.SecurityGroup(this, 'LambdaSecurityGroup', {
-      vpc,
-    });
+    const lambdaSg = new ec2.SecurityGroup(this, 'LambdaSecurityGroup', { vpc });
 
-    const taskSg = new ec2.SecurityGroup(this, 'TaskSecurityGroup', {
-      vpc,
-    });
+    const taskSg = new ec2.SecurityGroup(this, 'TaskSecurityGroup', { vpc });
     taskSg.addIngressRule(lambdaSg, ec2.Port.tcp(props.NODEJS_PORT));
 
     // Instantiate an Amazon ECS Service
@@ -86,14 +78,14 @@ export class LambdaECSStack extends Stack {
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE },
       securityGroup: lambdaSg,
       environment: {
-        ...(ec2Service.cloudMapService && { HEALTHCHECK_HOSTNAME: ec2Service.cloudMapService.serviceName + '.' + props.NAMESPACE_NAME }),
+        ...(ec2Service.cloudMapService && {
+          HEALTHCHECK_HOSTNAME: ec2Service.cloudMapService.serviceName + '.' + props.NAMESPACE_NAME,
+        }),
         HEALTHCHECK_PORT: String(props.NODEJS_PORT),
       },
     });
 
-    const lambdaFnIntegration = new integration.LambdaProxyIntegration({
-      handler: lambdaFn,
-    });
+    const lambdaFnIntegration = new integration.LambdaProxyIntegration({ handler: lambdaFn });
 
     const httpApi = new api.HttpApi(this, 'HttpApi');
 
@@ -103,9 +95,7 @@ export class LambdaECSStack extends Stack {
       integration: lambdaFnIntegration,
     });
 
-    new CfnOutput(this, 'ApiEndpoint', {
-      value: httpApi.apiEndpoint,
-    });
+    new CfnOutput(this, 'ApiEndpoint', { value: httpApi.apiEndpoint });
   }
 }
 
@@ -117,11 +107,10 @@ const devEnv = {
 
 const app = new App();
 
-new LambdaECSStack(app, 'lambda-ecs-stack-dev', {
+new ECSServiceDiscoveryStack(app, 'ecs-servicediscovery-stack-dev', {
   env: devEnv,
-  NAMESPACE_NAME: app.node.tryGetContext('namespace') || 'lambdaecsstack.local',
+  NAMESPACE_NAME: app.node.tryGetContext('namespace') || 'ecsservicediscoverystack.local',
   NODEJS_PORT: 3000,
 });
-// new MyStack(app, 'my-stack-prod', { env: prodEnv });
 
 app.synth();
