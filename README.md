@@ -1,9 +1,9 @@
 # A service discovery sample for Lambda and ECS architecture
 
 ## Architecture Diagram
-![Lambda ECS Architecture](asset/lambda-ecs-cloudmap-architecture.png)
+![ECS Service Discovery Architecture](asset/ecs-servicediscovery-architecture.png)
 
-## Install prequisite
+## Install CDK and project dependencies
 ```sh
 $ yarn global add cdk
 ```
@@ -15,12 +15,12 @@ $ yarn
 ## Bootstrap and Deploy
 ```sh
 $ cdk bootstrap
-$ cdk -c namespace=whatevernamespace.local --outputs-file outputs.json deploy
+$ cdk -c namespace=whatevernamespace.local -O outputs.json deploy
 ```
 
 ## Test
 ```sh
-$ curl -i $(cat outputs.json | jq -r ".\"lambda-ecs-stack-dev\".ApiEndpoint")
+$ curl -i $(cat outputs.json | jq -r ".\"ecs-servicediscovery-stack-dev\".ApiEndpoint")
 ```
 
 Expected respond
