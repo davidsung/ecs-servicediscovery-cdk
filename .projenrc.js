@@ -13,6 +13,9 @@ const project = new AwsCdkTypeScriptApp({
     '@aws-cdk/aws-apigatewayv2-integrations',
     '@aws-cdk/aws-servicediscovery',
   ],
+  gitignore: [
+    '.DS_Store',
+  ],
 
   /* AwsCdkTypeScriptAppOptions */
   // appEntrypoint: "main.ts",                                                 /* The CDK app's entrypoint (relative to the source directory, which is "src" by default). */

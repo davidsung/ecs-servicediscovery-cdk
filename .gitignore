@@ -35,6 +35,7 @@ jspm_packages/
 .yarn-integrity
 # parcel-bundler cache (https://parceljs.org/)
 .cache
+.DS_Store
 # jest-junit artifacts
 /test-reports/
 junit.xml
@@ -60,4 +61,3 @@ cdk.out/
 !/tsconfig.jest.json
 !/.eslintrc.json
 !/cdk.json
-outputs.json
